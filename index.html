@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bull Zone Meter - Nifty 500</title>
+<style>
+  :root { --bg:#fafafc; --ink:#1a1a1f; --muted:#6b6b76; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px 16px; background:var(--bg); color:var(--ink);
+         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { margin:0 0 8px; font-size: 26px; }
+  .row { display:flex; flex-wrap:wrap; align-items:center; gap:12px; color:var(--muted); margin-bottom:16px; }
+  .badge { padding:6px 14px; border-radius:999px; font-weight:700; color:#fff; }
+  .tabs button { border:1px solid #c9c9d2; background:#fff; padding:6px 12px; border-radius:6px;
+                 cursor:pointer; font-size:14px; }
+  .tabs button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .tabs button:focus-visible { outline:2px solid #1e9fff; outline-offset:2px; }
+  #chart { position:relative; }
+  svg { width:100%; height:auto; display:block; }
+  #tip { position:absolute; pointer-events:none; background:#fff; border:1px solid #c9c9d2;
+         padding:6px 10px; border-radius:6px; font-size:13px; display:none; white-space:nowrap; }
+  .note { margin-top:14px; font-size:13px; color:var(--muted); max-width:70ch; line-height:1.5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Bull Zone Meter - Nifty 500</h1>
+  <div class="row">
+    <span id="date">Loading...</span>
+    <span id="badge" class="badge" hidden></span>
+    <span class="tabs">
+      <button data-k="dma200" class="on">200-DMA</button>
+      <button data-k="dma50">50-DMA</button>
+    </span>
+  </div>
+  <div id="chart"><svg id="svg" viewBox="0 0 1000 480" role="img" aria-label="Bull Zone history chart"></svg><div id="tip"></div></div>
+  <p class="note" id="note"></p>
+</div>
+<script>
+const ZONES = [
+  {n:"Euphoria", lo:70, hi:100, c:"#1f7a50"},
+  {n:"Optimism", lo:50, hi:70,  c:"#1e9fff"},
+  {n:"Pessimism",lo:30, hi:50,  c:"#ff8c1a"},
+  {n:"Panic",    lo:0,  hi:30,  c:"#ff4d4d"}
+];
+const zoneOf = v => ZONES.find(z => v >= z.lo) || ZONES[3];
+const W=1000, H=480, L=50, R=10, T=10, B=60;
+const x = (i,n) => L + (W-L-R) * i / (n-1);
+const y = v => T + (H-T-B) * (1 - v/100);
+const NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs, text) => { const e=document.createElementNS(NS,tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]); if (text) e.textContent=text; return e; };
+
+let DATA, KEY = "dma200";
+
+function draw() {
+  const svg = document.getElementById("svg"); svg.innerHTML = "";
+  const vals = DATA.series[KEY], dates = DATA.dates, n = vals.length;
+
+  ZONES.forEach(z => {
+    svg.appendChild(el("rect", {x:L, y:y(z.hi), width:W-L-R, height:y(z.lo)-y(z.hi), fill:z.c}));
+    svg.appendChild(el("text", {x:L+8, y:y(z.lo)-10, fill:"#fff", "font-size":13, "font-weight":700}, z.n));
+  });
+  for (let v=0; v<=100; v+=10) {
+    svg.appendChild(el("line", {x1:L, x2:W-R, y1:y(v), y2:y(v), stroke:"rgba(0,0,0,.25)", "stroke-width":.5}));
+    svg.appendChild(el("text", {x:L-6, y:y(v)+4, "text-anchor":"end", "font-size":11, fill:"#333"}, v+"%"));
+  }
+  let last = "";
+  dates.forEach((d,i) => {
+    const m = d.slice(0,7);
+    if (m !== last) { last = m;
+      const dt = new Date(d);
+      const lab = dt.toLocaleString("en", {month:"short"}) + "-" + String(dt.getFullYear()).slice(2);
+      const px = x(i,n);
+      if (dt.getMonth() % 2 === 0 || n < 300) {
+        svg.appendChild(el("text", {x:px, y:H-B+16, "font-size":10, fill:"#333",
+          transform:`rotate(-45 ${px} ${H-B+16})`, "text-anchor":"end"}, lab));
+      }
+    }
+  });
+  svg.appendChild(el("text", {x:-(H-B)/2, y:14, transform:"rotate(-90)", "text-anchor":"middle", "font-size":12, "font-weight":700}, "Bull Zone %"));
+  svg.appendChild(el("path", {d: vals.map((v,i)=>(i?"L":"M")+x(i,n).toFixed(1)+" "+y(v).toFixed(1)).join(" "),
+    fill:"none", stroke:"#000", "stroke-width":1.8, "stroke-linejoin":"round"}));
+
+  const cur = vals[n-1], z = zoneOf(cur);
+  const b = document.getElementById("badge");
+  b.hidden = false; b.textContent = z.n + "  " + Math.round(cur) + "%"; b.style.background = z.c;
+  document.getElementById("date").textContent =
+    "Date: " + new Date(dates[n-1]).toLocaleDateString("en-GB", {day:"numeric", month:"short", year:"numeric"});
+  document.getElementById("note").textContent =
+    "Bull Zone % = Nifty 500 ke kitne % stocks apne " + KEY.replace("dma","") +
+    "-din ke moving average ke upar band hue. " + DATA.stocks + " stocks ka data use hua. Last update: " + DATA.updated +
+    ". Ye sirf market samajhne ka tool hai, investment advice nahi.";
+}
+
+const tip = document.getElementById("tip"), box = document.getElementById("chart");
+box.addEventListener("mousemove", e => {
+  if (!DATA) return;
+  const r = document.getElementById("svg").getBoundingClientRect();
+  const n = DATA.dates.length;
+  const px = (e.clientX - r.left) / r.width * W;
+  const i = Math.round((px - L) / (W-L-R) * (n-1));
+  if (i < 0 || i >= n) { tip.style.display="none"; return; }
+  const v = DATA.series[KEY][i];
+  tip.style.display = "block";
+  tip.textContent = DATA.dates[i] + ": " + v + "% (" + zoneOf(v).n + ")";
+  tip.style.left = Math.min(e.clientX - r.left + 12, r.width - 190) + "px";
+  tip.style.top = (e.clientY - r.top - 36) + "px";
+});
+box.addEventListener("mouseleave", () => tip.style.display = "none");
+
+document.querySelectorAll(".tabs button").forEach(btn => btn.addEventListener("click", () => {
+  KEY = btn.dataset.k;
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b === btn));
+  draw();
+}));
+
+fetch("data.json?v=" + Date.now())
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(d => { DATA = d; draw(); })
+  .catch(() => { document.getElementById("date").textContent =
+    "data.json abhi nahi mili. Pehle GitHub Actions ek baar chalao (guide ka Step 7)."; });
+</script>
+</body>
+</html>
